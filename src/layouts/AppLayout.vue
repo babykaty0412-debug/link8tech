@@ -1,7 +1,19 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import { useOnline } from '../composables/useOnline'
+import { useCartStore } from '../stores/cart'
 
 const { theme, toggle } = useTheme()
+
+// 離線佇列補送是「全域職責」：掛在常駐的 Layout，
+// 無論使用者在哪一頁，恢復連線都會補送，訂單不遺失。
+const cart = useCartStore()
+useOnline(() => cart.flushQueue())
+// app 啟動時也補送一次（涵蓋「離線關閉、連線後重開」的情境）
+onMounted(() => {
+  if (navigator.onLine) cart.flushQueue()
+})
 
 const navItems = [
   { to: '/', label: '儀表板', icon: '📊' },

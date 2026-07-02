@@ -131,21 +131,30 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
+  /** 補送進行中旗標：防止多個觸發點（事件、啟動）同時補送造成重複下單 */
+  let isFlushing = false
+
   /** 恢復連線時補送佇列中的訂單 */
   async function flushQueue() {
+    if (isFlushing) return
     const queue = loadQueue()
     if (!queue.length) return
-    const remaining: CreateOrderPayload[] = []
-    for (const payload of queue) {
-      try {
-        const order = await createOrder(payload)
-        useOrdersStore().appendOrder(order)
-      } catch {
-        remaining.push(payload) // 失敗的留在佇列，下次再試
+    isFlushing = true
+    try {
+      const remaining: CreateOrderPayload[] = []
+      for (const payload of queue) {
+        try {
+          const order = await createOrder(payload)
+          useOrdersStore().appendOrder(order)
+        } catch {
+          remaining.push(payload) // 失敗的留在佇列，下次再試
+        }
       }
+      saveQueue(remaining)
+      queuedCount.value = remaining.length
+    } finally {
+      isFlushing = false
     }
-    saveQueue(remaining)
-    queuedCount.value = remaining.length
   }
 
   return {

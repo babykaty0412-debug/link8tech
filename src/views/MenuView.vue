@@ -23,10 +23,8 @@ const {
 
 const router = useRouter()
 
-// 恢復連線時自動補送離線佇列的訂單
-const { isOnline } = useOnline(async () => {
-  await cart.flushQueue()
-})
+// 只取連線狀態顯示徽章；佇列補送由 AppLayout 全域負責，避免重複監聽造成重複送單
+const { isOnline } = useOnline()
 
 onMounted(cart.loadMenu)
 
