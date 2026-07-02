@@ -5,7 +5,10 @@ const { theme, toggle } = useTheme()
 
 const navItems = [
   { to: '/', label: '儀表板', icon: '📊' },
+  { to: '/menu', label: '顧客點餐', icon: '🛒' },
   { to: '/orders', label: '訂單管理', icon: '🧾' },
+  { to: '/kitchen', label: '廚房出單', icon: '🍳' },
+  { to: '/schedule', label: '師傅排班', icon: '📅' },
 ]
 </script>
 

@@ -12,10 +12,28 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '儀表板' },
   },
   {
+    path: '/menu',
+    name: 'menu',
+    component: () => import('../views/MenuView.vue'),
+    meta: { title: '顧客點餐' },
+  },
+  {
     path: '/orders',
     name: 'orders',
     component: () => import('../views/OrdersView.vue'),
     meta: { title: '訂單管理' },
+  },
+  {
+    path: '/kitchen',
+    name: 'kitchen',
+    component: () => import('../views/KitchenView.vue'),
+    meta: { title: '廚房出單' },
+  },
+  {
+    path: '/schedule',
+    name: 'schedule',
+    component: () => import('../views/ScheduleView.vue'),
+    meta: { title: '師傅排班' },
   },
   // 找不到的路徑導回首頁
   { path: '/:pathMatch(.*)*', redirect: '/' },

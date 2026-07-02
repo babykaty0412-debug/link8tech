@@ -100,6 +100,11 @@ export const useOrdersStore = defineStore('orders', () => {
     selectedOrderId.value = id
   }
 
+  /** 新訂單進站（顧客送單後），直接併入單一資料來源，全站即時反映 */
+  function appendOrder(order: Order) {
+    orders.value = [order, ...orders.value]
+  }
+
   async function changeOrderStatus(id: string, status: OrderStatus) {
     const target = orders.value.find((o) => o.id === id)
     if (!target || target.status === status) return
@@ -146,6 +151,7 @@ export const useOrdersStore = defineStore('orders', () => {
     selectedOrder,
     loadOrders,
     selectOrder,
+    appendOrder,
     changeOrderStatus,
   }
 })
