@@ -8,7 +8,7 @@ import StatusDonut from '../components/StatusDonut.vue'
 import SourceBar from '../components/SourceBar.vue'
 
 const store = useOrdersStore()
-const { orders, stats } = storeToRefs(store)
+const { orders, stats, loadError, isLoading } = storeToRefs(store)
 const router = useRouter()
 
 onMounted(store.loadOrders)
@@ -26,12 +26,20 @@ onMounted(store.loadOrders)
       </button>
     </header>
 
-    <StatsCard :stats="stats" class="section" />
-
-    <div class="charts section">
-      <StatusDonut :orders="orders" />
-      <SourceBar :orders="orders" />
+    <!-- 載入失敗：顯示錯誤與重試，不顯示「0 訂單」的假統計 -->
+    <div v-if="loadError && !isLoading" class="error-state section">
+      <p>⚠️ {{ loadError }}</p>
+      <button type="button" @click="store.loadOrders(true)">重新載入</button>
     </div>
+
+    <template v-else>
+      <StatsCard :stats="stats" class="section" />
+
+      <div class="charts section">
+        <StatusDonut :orders="orders" />
+        <SourceBar :orders="orders" />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -79,6 +87,26 @@ onMounted(store.loadOrders)
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   align-items: stretch;
+}
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 200px;
+  background: var(--card);
+  border: 1px dashed var(--status-cancelled-text);
+  border-radius: var(--radius-lg);
+  color: var(--status-cancelled-text);
+}
+.error-state button {
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
 }
 @media (max-width: 860px) {
   .charts {

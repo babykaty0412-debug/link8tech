@@ -1,30 +1,41 @@
-# 雲端訂單管理 Dashboard
+# link8tech — 雲端點餐系統
 
-以 **Vue 3 + TypeScript + Vite** 打造的雲端點餐／訂單管理前端作品。從資料流、狀態管理到測試與 mock 後端，皆以「可維護、可擴充、貼近生產環境」為目標設計。
+以 **Vue 3 + TypeScript + Vite** 打造的雲端點餐／餐飲營運系統作品：從顧客點餐、後台訂單、廚房出單到師傅排班的完整流程，並以「訂單永不遺失」為核心設計了離線佇列。
 
 > 🔗 線上展示：_(部署後補上連結)_
-> 📦 原始碼：_(GitHub 連結)_
+> 📦 原始碼：https://github.com/babykaty0412-debug/link8tech
 
 ---
 
-## ✨ 功能
+## 🗺 五大頁面
 
-- 訂單列表：編號、客戶、來源、狀態、金額、時間，客戶頭像與來源標籤
-- 關鍵字搜尋（去抖）、狀態／來源篩選、時間／金額排序
-- 點選訂單看明細、修改狀態（樂觀更新 + 失敗回滾）
-- 儀表板：統計卡（數字跳動）+ 狀態圓餅圖 + 來源長條圖
-- 深色／淺色模式（記憶偏好）、骨架屏載入、空／錯誤狀態
-- 桌機列表明細左右並排、手機上下排列並自動捲動定位
+| 頁面 | 路由 | 說明 |
+| --- | --- | --- |
+| 📊 儀表板 | `/` | 統計卡（數字跳動）、狀態圓餅圖、來源長條圖 |
+| 🛒 顧客點餐 | `/menu` | 菜單分類、購物車、送單即時進後台；**離線送單自動暫存** |
+| 🧾 訂單管理 | `/orders` | 搜尋（去抖）／篩選／排序、明細、改狀態（樂觀更新+回滾） |
+| 🍳 廚房出單 | `/kitchen` | 待處理 FIFO 票卡、等待計時、逾時急單警示、一鍵出餐 |
+| 📅 師傅排班 | `/schedule` | 週曆網格指派、同日連班 ⚠ 警示、重複指派雙層擋下 |
+
+## 📴 離線不掉單（核心亮點）
+
+餐飲現場網路不穩是常態，掉一張單就是賠一筆錢：
+
+1. 斷網時送單 → 訂單存入 `localStorage` 佇列，畫面明確提示「已暫存」
+2. 恢復連線 → **全域監聽**（掛在 Layout，不受換頁影響）自動補送
+3. app 啟動時也補送一次（涵蓋「離線關閉、連線後重開」）
+4. `flushQueue` 有防重入旗標，多觸發點併發也不會重複下單
+5. 補送失敗的單留在佇列等下一次，**永不遺失**
 
 ## 🛠 技術棧
 
 | 分類 | 技術 |
 | --- | --- |
 | 框架 | Vue 3（`<script setup>`）、TypeScript |
-| 路由 | Vue Router（懶載入 code-splitting） |
-| 狀態 | Pinia |
-| 假後端 | MSW（Mock Service Worker，攔截真 fetch） |
-| 測試 | Vitest + happy-dom |
+| 路由 | Vue Router（懶載入 code-splitting，每頁獨立 chunk） |
+| 狀態 | Pinia（orders / cart / schedule 三個 store） |
+| 假後端 | MSW（攔截真 fetch 的 REST mock：訂單、菜單、排班 CRUD） |
+| 測試 | Vitest + happy-dom（23 項） |
 | 建置 | Vite |
 
 ## 🚀 啟動
@@ -32,7 +43,7 @@
 ```bash
 npm install
 npm run dev       # 開發，http://localhost:5173
-npm run test      # 執行單元測試
+npm run test      # 單元測試（23 項）
 npm run build     # 型別檢查 + production build
 ```
 
@@ -40,48 +51,48 @@ npm run build     # 型別檢查 + production build
 
 ```
 src/
-├─ router/        路由定義 + 懶載入
-├─ stores/        Pinia store（訂單狀態，跨頁共享）
-├─ layouts/       AppLayout 側邊欄外殼
-├─ views/         DashboardView / OrdersView
-├─ components/    可複用 UI 元件 × 7
-├─ composables/   useDebounce / useTheme / useCountUp
-├─ api/           資料存取層（真 fetch client）
-├─ mocks/         MSW handlers + 假資料（mock 後端）
-├─ types/         Order / OrderItem / OrderStatus 等型別
-├─ utils/         格式化工具
-└─ constants/     繁中文案對照
+├─ router/        路由 + 懶載入
+├─ stores/        orders（訂單）/ cart（點餐+離線佇列）/ schedule（排班）
+├─ layouts/       AppLayout：側邊欄外殼 + 全域離線補送監聽
+├─ views/         Dashboard / Menu / Orders / Kitchen / Schedule
+├─ components/    FilterBar / StatsCard / StatusDonut / SourceBar /
+│                 OrderList / OrderDetail / StatusBadge
+├─ composables/   useDebounce / useTheme / useCountUp / useNow / useOnline
+├─ api/           fetch client（GET/POST/PATCH/DELETE，換真後端只改 BASE_URL）
+├─ mocks/         MSW handlers + 種子資料（mock 後端）
+├─ types/         order / menu / schedule 型別
+└─ utils/ constants/  格式化工具、繁中文案
 ```
 
 **資料流：單向 + 單一資料來源**
 
-- 狀態集中在 Pinia store；元件只讀 state、呼叫 action，不持有商業邏輯。
-- `orders` 為唯一原始資料；`filteredOrders`、`stats`、`selectedOrder` 皆為 `computed` 衍生狀態。
-- 明細只記 `selectedOrderId`，物件即時查出 → 改狀態後列表／明細／統計三處自動同步。
-- **API 層以真 `fetch` 呼叫 REST**，開發／展示由 MSW 攔截；接真後端只改 `BASE_URL`，畫面零改動。
+- 訂單資料只在 orders store 一份；點餐送單（cart）、廚房出餐（kitchen）、後台改狀態（orders）都操作同一份，儀表板統計與各頁畫面自動同步。
+- `filteredOrders`、`stats`、`selectedOrder` 皆為 `computed` 衍生狀態，不存副本。
+- 寫入操作一律「樂觀更新 + 失敗回滾」：改狀態、移除排班皆同。
+- 排班衝突「前端檢查 + 後端 409」雙層防護；同日連班以 derived `dayCount` 標示警示。
 
-## ✅ 測試（Vitest，14 項）
+## ✅ 測試（Vitest，23 項）
 
-- `format`：金額千分位、日期格式化
-- `useDebounce`：延遲更新、連續輸入只觸發一次
-- `stores/orders`：載入、統計、狀態／來源篩選、排序、搜尋、樂觀更新成功、**失敗回滾**
+- `stores/orders`：載入、統計、篩選、排序、搜尋、樂觀更新成功／失敗回滾
+- `stores/cart`：購物車計算、線上送單、**離線入佇列不打 API、恢復補送清空、補送失敗不遺失**
+- `stores/schedule`：載入、重複指派前端擋下、連班警示、移除失敗回滾
+- `useDebounce`、`utils/format`
 
-## 🍜 對應雲端點餐系統的設計考量
+## 🍜 對應餐飲現場的設計考量
 
-此作品刻意處理了餐飲 POS 的核心痛點：
-
-| 現場痛點 | 本專案對應設計 |
+| 現場痛點 | 對應設計 |
 | --- | --- |
-| 訂單不能掉單 | 樂觀更新 + 失敗自動回滾，畫面與後端一致 |
-| 多裝置即時同步 | 單一資料來源，改狀態多處連動 |
-| 後端可獨立開發 | API 層解耦 + MSW mock，後端未就緒也能平行開發 |
-| 系統穩定 | Loading／Empty／Error 狀態 + 單元測試 |
+| 網路不穩、訂單不能掉 | 離線佇列 + 全域補送 + 防重入 |
+| 尖峰時廚房要快 | KDS 大字票卡、FIFO、逾 15 分急單脈動警示 |
+| 排班不能撞班 | 重複指派雙層擋下、連班警示、週負載統計 |
+| 多裝置狀態一致 | 單一資料來源，改一處全站同步 |
+| 後端平行開發 | MSW 網路層 mock，前端打真 fetch，接真後端零改畫面 |
 
 ## 🧭 取捨與後續
 
-- **未過度設計**：規模適中，Pinia + composable 已足夠；未上多餘的抽象層。
-- **資料觀察**：初始資料 `amount` 與品項小計不一致，以 `amount` 為權威值並於明細標示。
-- **後續可擴充**：離線佇列（斷網不掉單）、廚房出單視圖（KDS）、WebSocket 即時推播、URL query 同步、E2E 測試。
+- 出餐完成以 `paid` 表示（demo 簡化）；實務會擴充 `preparing/served` 狀態機。
+- 排班為週視圖單週；可擴充月視圖、拖拉調班、班別範本。
+- 後續：WebSocket 即時推播新單、URL query 同步、E2E（Playwright）、多分店切換。
 
 ---
 

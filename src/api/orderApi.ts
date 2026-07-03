@@ -8,10 +8,21 @@ import type { Assignment, Staff } from '../types/schedule'
  */
 const BASE_URL = '/api'
 
+/** 帶 HTTP 狀態碼的 API 錯誤，讓呼叫端能區分 404／409 等語意 */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new Error(body?.message ?? `請求失敗（${res.status}）`)
+    throw new ApiError(body?.message ?? `請求失敗（${res.status}）`, res.status)
   }
   return res.json() as Promise<T>
 }

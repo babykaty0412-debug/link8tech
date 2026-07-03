@@ -6,18 +6,51 @@ import type { Order } from '../types/order'
 import { useOrdersStore } from './orders'
 
 const QUEUE_KEY = 'link8tech-offline-queue'
+const DEAD_KEY = 'link8tech-offline-deadletter'
+/** 單筆訂單補送失敗上限，超過移入死信匣不再無限重試 */
+const MAX_ATTEMPTS = 5
 
-/** 讀取 localStorage 中尚未送出的離線訂單 */
-function loadQueue(): CreateOrderPayload[] {
+/** 佇列中的離線訂單：附唯一 id（識別、去重）與已重試次數 */
+export interface QueuedOrder extends CreateOrderPayload {
+  queueId: string
+  attempts: number
+}
+
+/** 讀取離線佇列：驗證形狀，壞資料直接淘汰，不讓損壞的 localStorage 弄掛整個 app */
+function loadQueue(): QueuedOrder[] {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]')
+    const parsed = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (p): p is QueuedOrder =>
+        !!p && typeof p.queueId === 'string' && Array.isArray(p.items),
+    )
   } catch {
     return []
   }
 }
 
-function saveQueue(queue: CreateOrderPayload[]) {
+function saveQueue(queue: QueuedOrder[]) {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue))
+}
+
+/** 從佇列移除指定一筆：每次重讀當前狀態再過濾，不整包覆寫（併發安全） */
+function removeFromQueue(queueId: string) {
+  saveQueue(loadQueue().filter((p) => p.queueId !== queueId))
+}
+
+/** 移入死信匣：保留現場供人工處理，不再自動重試 */
+function moveToDeadLetter(item: QueuedOrder) {
+  try {
+    const dead = JSON.parse(localStorage.getItem(DEAD_KEY) ?? '[]')
+    localStorage.setItem(
+      DEAD_KEY,
+      JSON.stringify(Array.isArray(dead) ? [...dead, item] : [item]),
+    )
+  } catch {
+    localStorage.setItem(DEAD_KEY, JSON.stringify([item]))
+  }
+  removeFromQueue(item.queueId)
 }
 
 /**
@@ -90,8 +123,10 @@ export const useCartStore = defineStore('cart', () => {
   /** 最後一筆成功送出的訂單（給成功畫面顯示） */
   const lastOrder = ref<Order | null>(null)
 
-  function buildPayload(): CreateOrderPayload {
+  function buildQueued(): QueuedOrder {
     return {
+      queueId: `Q${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      attempts: 0,
       customerName: customerName.value,
       items: lines.value.map((l) => ({
         name: l.item.name,
@@ -101,18 +136,26 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
-  /** 送單：線上直接送；離線存入佇列，恢復後自動補送 */
+  function enqueue(item: QueuedOrder) {
+    const queue = loadQueue()
+    queue.push(item)
+    saveQueue(queue)
+    queuedCount.value = queue.length
+    clear()
+  }
+
+  /**
+   * 送單：線上直接送；離線（或請求因網路中斷失敗）存入佇列，恢復後自動補送。
+   * 開頭防重入：快速連點不會造成重複下單。
+   */
   async function submit(): Promise<'sent' | 'queued'> {
+    if (isSubmitting.value) return 'sent' // 防連點：前一筆還在送
     if (!lines.value.length) throw new Error('購物車是空的')
-    const payload = buildPayload()
+    const payload = buildQueued()
     submitError.value = null
 
     if (!navigator.onLine) {
-      const queue = loadQueue()
-      queue.push(payload)
-      saveQueue(queue)
-      queuedCount.value = queue.length
-      clear()
+      enqueue(payload)
       return 'queued'
     }
 
@@ -124,6 +167,11 @@ export const useCartStore = defineStore('cart', () => {
       clear()
       return 'sent'
     } catch (e) {
+      // fetch 網路層失敗（TypeError）＝實際斷網但 onLine 誤報 true → 一樣入佇列，不遺失
+      if (e instanceof TypeError) {
+        enqueue(payload)
+        return 'queued'
+      }
       submitError.value = e instanceof Error ? e.message : '送單失敗'
       throw e
     } finally {
@@ -131,29 +179,50 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
-  /** 補送進行中旗標：防止多個觸發點（事件、啟動）同時補送造成重複下單 */
+  /** 補送進行中旗標：防止同分頁多個觸發點併發補送 */
   let isFlushing = false
 
-  /** 恢復連線時補送佇列中的訂單 */
-  async function flushQueue() {
+  async function doFlush() {
     if (isFlushing) return
-    const queue = loadQueue()
-    if (!queue.length) return
     isFlushing = true
     try {
-      const remaining: CreateOrderPayload[] = []
-      for (const payload of queue) {
+      // 逐筆處理：成功一筆就立刻從「當前佇列」移除那一筆，
+      // 不整包覆寫（中途新入佇的訂單不會被吃掉；中途關頁也不會整批重送）
+      for (const item of loadQueue()) {
         try {
-          const order = await createOrder(payload)
+          const order = await createOrder(item)
           useOrdersStore().appendOrder(order)
-        } catch {
-          remaining.push(payload) // 失敗的留在佇列，下次再試
+          removeFromQueue(item.queueId)
+        } catch (e) {
+          if (e instanceof TypeError) break // 還是沒網路，整批留著下次再試
+          // 伺服器拒絕（4xx/5xx）：累計重試次數，超過上限移入死信匣
+          const queue = loadQueue()
+          const target = queue.find((q) => q.queueId === item.queueId)
+          if (target) {
+            target.attempts += 1
+            if (target.attempts >= MAX_ATTEMPTS) moveToDeadLetter(target)
+            else saveQueue(queue)
+          }
         }
       }
-      saveQueue(remaining)
-      queuedCount.value = remaining.length
+      queuedCount.value = loadQueue().length
     } finally {
       isFlushing = false
+    }
+  }
+
+  /** 恢復連線時補送佇列。以 Web Locks 做跨分頁互斥，避免多分頁重複送單 */
+  async function flushQueue() {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      await navigator.locks.request(
+        'link8tech-flush',
+        { ifAvailable: true },
+        async (lock) => {
+          if (lock) await doFlush()
+        },
+      )
+    } else {
+      await doFlush()
     }
   }
 

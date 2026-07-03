@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
+  ApiError,
   createShift,
   deleteShift,
   fetchShifts,
@@ -100,7 +101,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     }
   }
 
-  /** 移除班別：樂觀移除，失敗還原 */
+  /** 移除班別：樂觀移除，失敗還原（404 例外——資料本就不存在，等同刪除成功） */
   async function remove(id: string) {
     const idx = assignments.value.findIndex((a) => a.id === id)
     if (idx === -1) return
@@ -109,6 +110,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     try {
       await deleteShift(id)
     } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return // 已不存在，不回滾
       assignments.value.splice(idx, 0, removed) // 回滾
       error.value = e instanceof Error ? e.message : '移除失敗'
     }

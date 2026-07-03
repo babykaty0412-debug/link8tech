@@ -18,6 +18,7 @@ const clone = () => structuredClone(seedOrders) as Order[]
 describe('useOrdersStore', () => {
   beforeEach(async () => {
     setActivePinia(createPinia())
+    vi.mocked(fetchOrders).mockClear()
     vi.mocked(fetchOrders).mockResolvedValue(clone())
     vi.mocked(updateOrderStatus).mockReset()
   })
@@ -88,8 +89,11 @@ describe('useOrdersStore', () => {
     expect(store.selectedOrder?.customerName).toBe('陳柏翰')
   })
 
-  it('changeOrderStatus 樂觀更新成功後同步狀態', async () => {
-    vi.mocked(updateOrderStatus).mockResolvedValue({} as Order)
+  it('changeOrderStatus 樂觀更新成功後以伺服器回應同步狀態', async () => {
+    vi.mocked(updateOrderStatus).mockResolvedValue({
+      id: 'A20260625001',
+      status: 'paid',
+    } as Order)
     const store = useOrdersStore()
     await store.loadOrders()
     await store.changeOrderStatus('A20260625001', 'paid')
@@ -98,13 +102,69 @@ describe('useOrdersStore', () => {
     expect(store.updateError).toBeNull()
   })
 
-  it('changeOrderStatus 失敗時回滾並記錄錯誤', async () => {
+  it('changeOrderStatus 失敗時回滾並記錄「綁定訂單」的錯誤', async () => {
     vi.mocked(updateOrderStatus).mockRejectedValue(new Error('伺服器錯誤'))
     const store = useOrdersStore()
     await store.loadOrders()
     await store.changeOrderStatus('A20260625001', 'cancelled')
     const target = store.orders.find((o) => o.id === 'A20260625001')
     expect(target?.status).toBe('pending') // 回滾到原狀態
-    expect(store.updateError).toBe('伺服器錯誤')
+    expect(store.updateError).toEqual({
+      orderId: 'A20260625001',
+      message: '伺服器錯誤',
+    })
+  })
+
+  it('回滾以 id 重查：更新期間 orders 被整批替換也能正確回滾', async () => {
+    // 模擬 PATCH 飛行中，orders 陣列被 loadOrders(force) 整包換新
+    vi.mocked(updateOrderStatus).mockImplementation(async () => {
+      const store = useOrdersStore()
+      store.orders = structuredClone(seedOrders) // 全新物件（舊 target 成孤兒）
+      throw new Error('伺服器錯誤')
+    })
+    const store = useOrdersStore()
+    await store.loadOrders()
+    await store.changeOrderStatus('A20260625001', 'paid')
+    const target = store.orders.find((o) => o.id === 'A20260625001')
+    expect(target?.status).toBe('pending') // 新物件上也回滾成功
+  })
+
+  it('同一筆訂單更新未完成前，第二次呼叫直接忽略（防交錯回滾）', async () => {
+    let resolveFirst!: () => void
+    vi.mocked(updateOrderStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = () =>
+            resolve({ id: 'A20260625001', status: 'paid' } as Order)
+        }),
+    )
+    const store = useOrdersStore()
+    await store.loadOrders()
+    const first = store.changeOrderStatus('A20260625001', 'paid')
+    await store.changeOrderStatus('A20260625001', 'cancelled') // 應被忽略
+    expect(updateOrderStatus).toHaveBeenCalledTimes(1)
+    resolveFirst()
+    await first
+    const target = store.orders.find((o) => o.id === 'A20260625001')
+    expect(target?.status).toBe('paid')
+  })
+
+  it('loadOrders 併發呼叫共用同一請求，不重複打 API', async () => {
+    const store = useOrdersStore()
+    await Promise.all([store.loadOrders(), store.loadOrders(), store.loadOrders()])
+    expect(fetchOrders).toHaveBeenCalledTimes(1)
+  })
+
+  it('loadOrders 合併：本地剛新增的訂單不被較舊的伺服器快照吃掉', async () => {
+    const store = useOrdersStore()
+    await store.loadOrders()
+    const newOrder = {
+      ...structuredClone(seedOrders[0]),
+      id: 'A20260702099',
+      customerName: '新客人',
+    }
+    store.appendOrder(newOrder as Order)
+    await store.loadOrders(true) // 伺服器快照不含新訂單
+    expect(store.orders.some((o) => o.id === 'A20260702099')).toBe(true)
   })
 })

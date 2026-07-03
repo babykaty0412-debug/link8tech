@@ -34,8 +34,10 @@ function toggleCell(day: WeekDay, slot: ShiftSlot) {
 }
 
 async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
+  const myCell = `${day}-${slot}`
   await store.assign(staffId, day, slot)
-  openCell.value = null
+  // 只關閉自己這格的選單：await 期間使用者若已開啟別格，不去干擾
+  if (openCell.value === myCell) openCell.value = null
 }
 </script>
 
@@ -56,9 +58,15 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
       </span>
     </div>
 
-    <p v-if="error" class="error-note" role="alert">⚠️ {{ error }}</p>
+    <p v-if="error && staff.length" class="error-note" role="alert">⚠️ {{ error }}</p>
 
     <div v-if="isLoading" class="state">載入排班中…</div>
+
+    <!-- 載入失敗：給重試，不渲染可互動的空班表 -->
+    <div v-else-if="error && !staff.length" class="state state--error">
+      <p>⚠️ {{ error }}</p>
+      <button type="button" class="retry-btn" @click="store.loadAll(true)">重新載入</button>
+    </div>
 
     <!-- 週曆網格 -->
     <div v-else class="grid-wrap">
@@ -318,6 +326,8 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
 .state {
   min-height: 220px;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
@@ -325,5 +335,17 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
   margin-top: 18px;
+}
+.state--error {
+  color: var(--status-cancelled-text);
+  border-color: var(--status-cancelled-text);
+}
+.retry-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
 }
 </style>

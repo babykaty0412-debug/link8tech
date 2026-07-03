@@ -6,7 +6,8 @@ import { useNow, formatElapsed } from '../composables/useNow'
 import { SOURCE_LABELS } from '../constants/labels'
 
 const store = useOrdersStore()
-const { orders, isLoading, updatingId } = storeToRefs(store)
+const { orders, isLoading, loadError, updatingIds, updateError } =
+  storeToRefs(store)
 
 onMounted(store.loadOrders)
 
@@ -43,7 +44,18 @@ function complete(id: string) {
       <span class="count-badge">🔥 待處理 {{ tickets.length }} 單</span>
     </header>
 
+    <!-- 出餐失敗提示（樂觀更新已回滾，票卡會重新出現） -->
+    <p v-if="updateError" class="update-error" role="alert">
+      ⚠️ 訂單 {{ updateError.orderId }} 出餐失敗：{{ updateError.message }}（已還原，請重試）
+    </p>
+
     <div v-if="isLoading" class="state">載入中…</div>
+
+    <!-- 載入失敗：顯示真實錯誤，不偽裝成「沒有訂單」 -->
+    <div v-else-if="loadError" class="state state--error">
+      <p>⚠️ {{ loadError }}</p>
+      <button type="button" @click="store.loadOrders(true)">重新載入</button>
+    </div>
 
     <div v-else-if="tickets.length === 0" class="state state--done">
       <span class="done-icon">🎉</span>
@@ -79,10 +91,10 @@ function complete(id: string) {
         <button
           type="button"
           class="done-btn"
-          :disabled="updatingId === ticket.id"
+          :disabled="updatingIds.has(ticket.id)"
           @click="complete(ticket.id)"
         >
-          {{ updatingId === ticket.id ? '處理中…' : '✓ 完成出餐' }}
+          {{ updatingIds.has(ticket.id) ? '處理中…' : '✓ 完成出餐' }}
         </button>
       </article>
     </TransitionGroup>
@@ -211,6 +223,27 @@ function complete(id: string) {
 .done-btn:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+.update-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--status-cancelled-text);
+  background: var(--status-cancelled-bg);
+  border: 1px solid var(--status-cancelled-text);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+.state--error {
+  color: var(--status-cancelled-text);
+  border-color: var(--status-cancelled-text);
+}
+.state--error button {
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
 }
 .state {
   min-height: 260px;

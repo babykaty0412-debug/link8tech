@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
@@ -38,6 +38,10 @@ const CATEGORIES: { key: MenuCategory; label: string; icon: string }[] = [
 /** 送單結果提示 */
 const notice = ref<{ type: 'sent' | 'queued'; text: string } | null>(null)
 
+/** 送單成功的延遲導頁計時器：卸載時清除，不劫持使用者的自主導航 */
+let redirectTimer: ReturnType<typeof setTimeout> | undefined
+onUnmounted(() => clearTimeout(redirectTimer))
+
 async function submitOrder() {
   try {
     const result = await cart.submit()
@@ -48,7 +52,7 @@ async function submitOrder() {
       }
     } else {
       notice.value = { type: 'sent', text: '✅ 送單成功！訂單已進入後台' }
-      setTimeout(() => router.push('/orders'), 1200)
+      redirectTimer = setTimeout(() => router.push('/orders'), 1200)
     }
   } catch {
     /* submitError 已由 store 記錄並顯示 */

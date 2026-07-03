@@ -12,6 +12,14 @@ vi.mock('../api/orderApi', () => ({
   createOrder: vi.fn(),
   fetchOrders: vi.fn(),
   updateOrderStatus: vi.fn(),
+  ApiError: class ApiError extends Error {
+    readonly status: number
+    constructor(message: string, status: number) {
+      super(message)
+      this.name = 'ApiError'
+      this.status = status
+    }
+  },
 }))
 
 import {
@@ -74,5 +82,15 @@ describe('useScheduleStore', () => {
     await store.remove('AS01')
     expect(store.assignments).toHaveLength(1) // 回滾
     expect(store.error).toBe('伺服器錯誤')
+  })
+
+  it('移除遇 404（資料已不存在）不回滾，不產生幽靈班表', async () => {
+    const { ApiError } = await import('../api/orderApi')
+    vi.mocked(deleteShift).mockRejectedValue(new ApiError('找不到排班', 404))
+    const store = useScheduleStore()
+    await store.loadAll()
+    await store.remove('AS01')
+    expect(store.assignments).toHaveLength(0) // 視同刪除成功
+    expect(store.error).toBeNull()
   })
 })

@@ -1,19 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Order, OrderStatus } from '../types/order'
+import type { UpdateError } from '../stores/orders'
 import { SOURCE_LABELS, STATUS_LABELS } from '../constants/labels'
 import { formatCurrency, formatDateFull } from '../utils/format'
 import StatusBadge from './StatusBadge.vue'
 
 const props = defineProps<{
   order: Order | null
-  updatingId?: string | null
-  updateError?: string | null
+  updating?: boolean
+  updateError?: UpdateError | null
 }>()
 const emit = defineEmits<{ changeStatus: [id: string, status: OrderStatus] }>()
 
-const isUpdating = computed(
-  () => !!props.order && props.updatingId === props.order.id,
+const isUpdating = computed(() => !!props.updating)
+
+/** 只顯示屬於「目前這筆訂單」的錯誤，別筆的失敗不會掛錯地方 */
+const ownError = computed(() =>
+  props.updateError && props.order && props.updateError.orderId === props.order.id
+    ? props.updateError.message
+    : null,
 )
 
 /** 品項小計加總（可能與 order.amount 不同：金額可能含運費、折扣等） */
@@ -77,8 +83,8 @@ function onChange(event: Event) {
         <span v-if="isUpdating" class="updating-hint">處理中…</span>
       </div>
 
-      <p v-if="updateError" class="update-error" role="alert">
-        ⚠️ {{ updateError }}
+      <p v-if="ownError" class="update-error" role="alert">
+        ⚠️ {{ ownError }}
       </p>
 
       <h4 class="items-title">訂單品項</h4>

@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue'
+import { onScopeDispose, ref, watch, type Ref } from 'vue'
 
 /**
  * 數字跳動動畫：來源值變動時，於 duration 內平滑遞增到目標值。
@@ -24,6 +24,9 @@ export function useCountUp(source: Ref<number>, duration = 700): Ref<number> {
     start = 0
     raf = requestAnimationFrame(step)
   })
+
+  // 元件卸載時取消進行中的動畫影格，避免對已卸載元件寫入
+  onScopeDispose(() => cancelAnimationFrame(raf))
 
   return display
 }

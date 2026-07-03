@@ -11,7 +11,7 @@ const {
   isLoading,
   loadError,
   updateError,
-  updatingId,
+  updatingIds,
   keyword,
   statusFilter,
   sourceFilter,
@@ -83,7 +83,7 @@ watch(selectedOrderId, async (id) => {
       <div ref="detailPane" class="detail-pane">
         <OrderDetail
           :order="selectedOrder"
-          :updating-id="updatingId"
+          :updating="!!selectedOrder && updatingIds.has(selectedOrder.id)"
           :update-error="updateError"
           @change-status="store.changeOrderStatus"
         />
