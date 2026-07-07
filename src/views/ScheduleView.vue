@@ -123,6 +123,7 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
                     <button
                       type="button"
                       class="picker-item"
+                      :disabled="store.isAssigning(p.id, d.day, s.slot)"
                       @click="pick(p.id, d.day, s.slot)"
                     >
                       {{ p.icon }} {{ p.name }}

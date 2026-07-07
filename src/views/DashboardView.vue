@@ -26,8 +26,14 @@ onMounted(store.loadOrders)
       </button>
     </header>
 
-    <!-- 載入失敗：顯示錯誤與重試，不顯示「0 訂單」的假統計 -->
-    <div v-if="loadError && !isLoading" class="error-state section">
+    <!-- 首次載入中：不顯示 0 統計 -->
+    <div v-if="isLoading && !orders.length" class="loading-state section">
+      <span class="spinner" aria-hidden="true" />
+      <p>載入中…</p>
+    </div>
+
+    <!-- 載入失敗且無資料：顯示錯誤與重試，不顯示「0 訂單」的假統計 -->
+    <div v-else-if="loadError && !orders.length" class="error-state section">
       <p>⚠️ {{ loadError }}</p>
       <button type="button" @click="store.loadOrders(true)">重新載入</button>
     </div>
@@ -88,7 +94,8 @@ onMounted(store.loadOrders)
   gap: 16px;
   align-items: stretch;
 }
-.error-state {
+.error-state,
+.loading-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -96,9 +103,26 @@ onMounted(store.loadOrders)
   gap: 10px;
   min-height: 200px;
   background: var(--card);
-  border: 1px dashed var(--status-cancelled-text);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
+  color: var(--text-muted);
+}
+.error-state {
+  border-color: var(--status-cancelled-text);
   color: var(--status-cancelled-text);
+}
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .error-state button {
   padding: 8px 16px;

@@ -167,4 +167,32 @@ describe('useOrdersStore', () => {
     await store.loadOrders(true) // 伺服器快照不含新訂單
     expect(store.orders.some((o) => o.id === 'A20260702099')).toBe(true)
   })
+
+  it('loadOrders 不保留伺服器已刪除的訂單（不產生幽靈訂單）', async () => {
+    const store = useOrdersStore()
+    await store.loadOrders()
+    expect(store.orders).toHaveLength(4)
+    // 伺服器端刪掉一筆：下次 fetch 只回 3 筆
+    vi.mocked(fetchOrders).mockResolvedValue(
+      structuredClone(seedOrders).slice(1),
+    )
+    await store.loadOrders(true)
+    expect(store.orders).toHaveLength(3) // 被刪的不再被當新單保留
+    expect(store.orders.some((o) => o.id === 'A20260625001')).toBe(false)
+  })
+
+  it('回滾守衛：更新失敗時若狀態已被第三方改動，不覆蓋真實變更', async () => {
+    // PATCH 飛行中，第三方把該訂單改成 cancelled，然後 PATCH 失敗
+    vi.mocked(updateOrderStatus).mockImplementation(async () => {
+      const store = useOrdersStore()
+      const o = store.orders.find((x) => x.id === 'A20260625001')
+      if (o) o.status = 'cancelled' // 第三方變更
+      throw new Error('伺服器錯誤')
+    })
+    const store = useOrdersStore()
+    await store.loadOrders()
+    await store.changeOrderStatus('A20260625001', 'paid')
+    const target = store.orders.find((o) => o.id === 'A20260625001')
+    expect(target?.status).toBe('cancelled') // 不被回滾成舊的 pending
+  })
 })

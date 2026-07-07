@@ -36,6 +36,9 @@ export const useOrdersStore = defineStore('orders', () => {
   // 更新中的訂單 id 集合：支援多筆併發更新，各自獨立鎖定
   const updatingIds = ref<Set<string>>(new Set())
   const hasLoaded = ref(false)
+  // 本地樂觀新增、尚未被伺服器快照確認的訂單 id。
+  // 合併時只保留這些「未確認的新單」，避免把伺服器已刪除的訂單當新單保留（幽靈訂單）。
+  const unconfirmedIds = new Set<string>()
 
   // ---- 使用者操作的條件（唯一可寫入的來源）----
   const keyword = ref('')
@@ -65,8 +68,13 @@ export const useOrdersStore = defineStore('orders', () => {
       try {
         const fetched = await fetchOrders()
         const fetchedIds = new Set(fetched.map((o) => o.id))
-        // 保留本地才有的新訂單（如剛補送成功、伺服器快照較舊）
-        const localOnly = orders.value.filter((o) => !fetchedIds.has(o.id))
+        // 只保留「本地才有 且 尚未被伺服器確認」的新單；
+        // 伺服器已確認過又移除的訂單不保留（避免幽靈訂單）
+        const localOnly = orders.value.filter(
+          (o) => !fetchedIds.has(o.id) && unconfirmedIds.has(o.id),
+        )
+        // 伺服器此次已回傳的訂單即為已確認，從未確認清單移除
+        for (const id of fetchedIds) unconfirmedIds.delete(id)
         // 更新中訂單維持樂觀狀態，不被舊資料蓋回
         const merged = fetched.map((o) => {
           if (!updatingIds.value.has(o.id)) return o
@@ -145,6 +153,8 @@ export const useOrdersStore = defineStore('orders', () => {
   function appendOrder(order: Order) {
     // 防重：補送與重新載入可能讓同一筆訂單兩條路進站
     if (orders.value.some((o) => o.id === order.id)) return
+    // 標記為「未確認新單」，讓下次 loadOrders 合併時保留、直到伺服器快照確認
+    unconfirmedIds.add(order.id)
     orders.value = [order, ...orders.value]
   }
 
@@ -181,7 +191,9 @@ export const useOrdersStore = defineStore('orders', () => {
       if (current) current.status = updated.status
     } catch (e) {
       const current = orders.value.find((o) => o.id === id)
-      if (current) current.status = previous // 回滾（以 id 重查）
+      // 只有在「本地仍是我們剛設的樂觀值」時才回滾；
+      // 若期間已被第三方（reload/他人）改成別的值，就不覆蓋，避免蓋掉真實變更
+      if (current && current.status === status) current.status = previous
       updateError.value = {
         orderId: id,
         message: e instanceof Error ? e.message : '更新狀態失敗',
@@ -194,6 +206,11 @@ export const useOrdersStore = defineStore('orders', () => {
       // 這裡補上「更新完成」這個時間點的檢查，避免殘留選取）
       pruneSelection()
     }
+  }
+
+  /** 清除更新錯誤（換頁時呼叫，避免錯誤橫幅跨頁殘留） */
+  function clearUpdateError() {
+    updateError.value = null
   }
 
   // 篩選條件變動時，若當前選取項已被濾掉，清除選取避免明細殘留
@@ -219,5 +236,6 @@ export const useOrdersStore = defineStore('orders', () => {
     selectOrder,
     appendOrder,
     changeOrderStatus,
+    clearUpdateError,
   }
 })

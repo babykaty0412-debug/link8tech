@@ -181,10 +181,23 @@ export const useCartStore = defineStore('cart', () => {
 
   /** 補送進行中旗標：防止同分頁多個觸發點併發補送 */
   let isFlushing = false
+  /** 伺服器錯誤後的自動重試計時器（指數退避），避免佇列永久卡住 */
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retryDelay = 5000
+
+  function scheduleRetry() {
+    if (retryTimer) return // 已排程
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined
+      retryDelay = Math.min(retryDelay * 2, 60000) // 5s→10s→…→上限 60s
+      if (navigator.onLine) flushQueue()
+    }, retryDelay)
+  }
 
   async function doFlush() {
     if (isFlushing) return
     isFlushing = true
+    let hadServerError = false
     try {
       // 逐筆處理：成功一筆就立刻從「當前佇列」移除那一筆，
       // 不整包覆寫（中途新入佇的訂單不會被吃掉；中途關頁也不會整批重送）
@@ -193,8 +206,10 @@ export const useCartStore = defineStore('cart', () => {
           const order = await createOrder(item)
           useOrdersStore().appendOrder(order)
           removeFromQueue(item.queueId)
+          retryDelay = 5000 // 有成功就重置退避
         } catch (e) {
-          if (e instanceof TypeError) break // 還是沒網路，整批留著下次再試
+          if (e instanceof TypeError) break // 還是沒網路，靠 online 事件再觸發
+          hadServerError = true
           // 伺服器拒絕（4xx/5xx）：累計重試次數，超過上限移入死信匣
           const queue = loadQueue()
           const target = queue.find((q) => q.queueId === item.queueId)
@@ -209,6 +224,8 @@ export const useCartStore = defineStore('cart', () => {
     } finally {
       isFlushing = false
     }
+    // 伺服器暫時性錯誤造成佇列仍有殘留 → 排程自動重試（不必等使用者重整）
+    if (hadServerError && queuedCount.value > 0) scheduleRetry()
   }
 
   /** 恢復連線時補送佇列。以 Web Locks 做跨分頁互斥，避免多分頁重複送單 */
@@ -224,6 +241,8 @@ export const useCartStore = defineStore('cart', () => {
     } else {
       await doFlush()
     }
+    // 不論本分頁有無拿到鎖，都同步一次顯示數字，避免跨分頁佇列數不一致
+    queuedCount.value = loadQueue().length
   }
 
   return {

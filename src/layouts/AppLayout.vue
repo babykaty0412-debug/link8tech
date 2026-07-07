@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useOnline } from '../composables/useOnline'
 import { useCartStore } from '../stores/cart'
+import { useOrdersStore } from '../stores/orders'
 
 const { theme, toggle } = useTheme()
 
@@ -14,6 +16,14 @@ useOnline(() => cart.flushQueue())
 onMounted(() => {
   if (navigator.onLine) cart.flushQueue()
 })
+
+// 換頁時清除「更新狀態」的短暫錯誤，避免錯誤橫幅跨頁殘留、掛到別頁
+const route = useRoute()
+const ordersStore = useOrdersStore()
+watch(
+  () => route.path,
+  () => ordersStore.clearUpdateError(),
+)
 
 const navItems = [
   { to: '/', label: '儀表板', icon: '📊' },
@@ -53,13 +63,10 @@ const navItems = [
       </button>
     </aside>
 
-    <!-- 主內容：路由出口，切頁時淡入 -->
+    <!-- 主內容：路由出口。切頁動畫由各頁自身的進場動畫負責，
+         不用 Transition mode=out-in 包 lazy component（會在 chunk 載入時卡住） -->
     <main class="content">
-      <RouterView v-slot="slotProps">
-        <Transition name="fade" mode="out-in">
-          <component :is="slotProps?.Component" />
-        </Transition>
-      </RouterView>
+      <RouterView />
     </main>
   </div>
 </template>
@@ -142,18 +149,19 @@ const navItems = [
 .content {
   min-width: 0;
 }
-
-/* 路由切換淡入 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+/* 切頁進場淡入：套在路由出口的內容上，每次換頁重播 */
+.content > * {
+  animation: page-in 0.25s var(--ease) both;
 }
-.fade-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-.fade-leave-to {
-  opacity: 0;
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 手機版：側邊欄變頂部橫列 */

@@ -19,6 +19,8 @@ export const useScheduleStore = defineStore('schedule', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   const hasLoaded = ref(false)
+  // 指派中的格子 key（staffId-day-slot），防止連點同格同人發出多個 POST
+  const assigningKeys = ref<Set<string>>(new Set())
 
   async function loadAll(force = false) {
     if (hasLoaded.value && !force) return
@@ -89,29 +91,45 @@ export const useScheduleStore = defineStore('schedule', () => {
    */
   async function assign(staffId: string, day: WeekDay, slot: ShiftSlot) {
     error.value = null
+    const key = `${staffId}-${day}-${slot}`
+    // 同格同人已在指派中（前一個 POST 尚未回來）→ 直接忽略，避免連點送兩次
+    if (assigningKeys.value.has(key)) return
     if (cellOf(day, slot).some((a) => a.staffId === staffId)) {
       error.value = '該師傅已在此班別，不可重複指派'
       return
     }
+    assigningKeys.value = new Set(assigningKeys.value).add(key)
     try {
       const created = await createShift({ staffId, day, slot })
       assignments.value.push(created)
     } catch (e) {
       error.value = e instanceof Error ? e.message : '指派失敗'
+    } finally {
+      const next = new Set(assigningKeys.value)
+      next.delete(key)
+      assigningKeys.value = next
     }
+  }
+
+  function isAssigning(staffId: string, day: WeekDay, slot: ShiftSlot): boolean {
+    return assigningKeys.value.has(`${staffId}-${day}-${slot}`)
   }
 
   /** 移除班別：樂觀移除，失敗還原（404 例外——資料本就不存在，等同刪除成功） */
   async function remove(id: string) {
-    const idx = assignments.value.findIndex((a) => a.id === id)
-    if (idx === -1) return
-    const [removed] = assignments.value.splice(idx, 1)
+    const target = assignments.value.find((a) => a.id === id)
+    if (!target) return
+    assignments.value = assignments.value.filter((a) => a.id !== id)
     error.value = null
     try {
       await deleteShift(id)
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) return // 已不存在，不回滾
-      assignments.value.splice(idx, 0, removed) // 回滾
+      // 回滾以「重新加回」處理，不用 await 前的舊索引（併發下索引已失效）；
+      // 同格顯示順序不影響正確性（cellMap 以 day-slot 分組）
+      if (!assignments.value.some((a) => a.id === id)) {
+        assignments.value = [...assignments.value, target]
+      }
       error.value = e instanceof Error ? e.message : '移除失敗'
     }
   }
@@ -121,6 +139,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     assignments,
     isLoading,
     error,
+    isAssigning,
     staffById,
     weekCount,
     loadAll,

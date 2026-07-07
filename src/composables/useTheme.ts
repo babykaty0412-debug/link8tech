@@ -1,4 +1,4 @@
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 
 export type Theme = 'light' | 'dark'
 
@@ -9,7 +9,12 @@ const STORAGE_KEY = 'order-dashboard-theme'
  * 選擇寫入 <html data-theme> 讓 CSS tokens 生效。
  */
 export function useTheme() {
-  const theme = ref<Theme>('light')
+  // 初值直接讀 <html data-theme>（index.html 的行內腳本已在首屏前設好），
+  // 與畫面同步，不會有 toggle 文字先顯示錯、onMounted 才修正的落差
+  const initial =
+    (document.documentElement.getAttribute('data-theme') as Theme | null) ??
+    'light'
+  const theme = ref<Theme>(initial)
 
   function apply(value: Theme) {
     theme.value = value
@@ -20,14 +25,6 @@ export function useTheme() {
   function toggle() {
     apply(theme.value === 'light' ? 'dark' : 'light')
   }
-
-  onMounted(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as Theme | null
-    const prefersDark = window.matchMedia(
-      '(prefers-color-scheme: dark)',
-    ).matches
-    apply(saved ?? (prefersDark ? 'dark' : 'light'))
-  })
 
   return { theme, toggle }
 }

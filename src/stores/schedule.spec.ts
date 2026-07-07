@@ -93,4 +93,24 @@ describe('useScheduleStore', () => {
     expect(store.assignments).toHaveLength(0) // 視同刪除成功
     expect(store.error).toBeNull()
   })
+
+  it('連點同格同人：指派中第二次呼叫被忽略，不發第二個 POST', async () => {
+    let resolveCreate!: () => void
+    vi.mocked(createShift).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = () =>
+            resolve({ id: 'AS99', staffId: 'S02', day: 1, slot: 'morning' })
+        }),
+    )
+    const store = useScheduleStore()
+    await store.loadAll()
+    const first = store.assign('S02', 1, 'morning')
+    expect(store.isAssigning('S02', 1, 'morning')).toBe(true)
+    await store.assign('S02', 1, 'morning') // 應被忽略
+    expect(createShift).toHaveBeenCalledTimes(1)
+    resolveCreate()
+    await first
+    expect(store.isAssigning('S02', 1, 'morning')).toBe(false)
+  })
 })

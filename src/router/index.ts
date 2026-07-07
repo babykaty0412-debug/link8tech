@@ -49,12 +49,11 @@ const router = createRouter({
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined
   document.title = title ? `${title}｜訂單管理系統` : '訂單管理系統'
-  // 導覽成功即重置 chunk 重整旗標，讓下一次部署更新仍可自動復原
-  sessionStorage.removeItem('chunk-reloaded')
 })
 
-// 懶載入 chunk 失敗（部署更新後舊 chunk 404）：重新整理一次拿新版，
-// 用 sessionStorage 防止無限重整迴圈
+// 懶載入 chunk 失敗（部署更新後舊 chunk 404）：重新整理一次拿新版。
+// 每個 tab session 只自動重整一次——旗標不在導覽成功時清除，
+// 避免「chunk 永久壞掉」時反覆無限重整（清除旗標的動作交給整頁重新載入）。
 router.onError((error) => {
   const isChunkError = /Failed to fetch dynamically imported module|Importing a module script failed/.test(
     String(error?.message ?? error),
@@ -63,6 +62,6 @@ router.onError((error) => {
     sessionStorage.setItem('chunk-reloaded', '1')
     window.location.reload()
   }
-})
+}) // 注：sessionStorage 於整頁 reload 後仍保留，故一個 session 至多自動重整一次
 
 export default router
