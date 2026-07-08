@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Order, OrderStatus } from '../types/order'
+import type { Staff } from '../types/schedule'
 import type { UpdateError } from '../stores/orders'
 import { SOURCE_LABELS, STATUS_LABELS } from '../constants/labels'
 import { formatCurrency, formatDateFull } from '../utils/format'
@@ -10,8 +11,13 @@ const props = defineProps<{
   order: Order | null
   updating?: boolean
   updateError?: UpdateError | null
+  /** 可指派的送餐人員名單 */
+  staff?: Staff[]
 }>()
-const emit = defineEmits<{ changeStatus: [id: string, status: OrderStatus] }>()
+const emit = defineEmits<{
+  changeStatus: [id: string, status: OrderStatus]
+  changeCourier: [id: string, courierId: string | null]
+}>()
 
 const isUpdating = computed(() => !!props.updating)
 
@@ -39,6 +45,12 @@ function onChange(event: Event) {
   if (!props.order) return
   const status = (event.target as HTMLSelectElement).value as OrderStatus
   emit('changeStatus', props.order.id, status)
+}
+
+function onCourierChange(event: Event) {
+  if (!props.order) return
+  const value = (event.target as HTMLSelectElement).value
+  emit('changeCourier', props.order.id, value || null)
 }
 </script>
 
@@ -81,6 +93,22 @@ function onChange(event: Event) {
           </option>
         </select>
         <span v-if="isUpdating" class="updating-hint">處理中…</span>
+      </div>
+
+      <!-- 送餐人員指派 -->
+      <div class="status-control">
+        <label for="courier-select">送餐人員</label>
+        <select
+          id="courier-select"
+          :value="order.courierId ?? ''"
+          :disabled="isUpdating"
+          @change="onCourierChange"
+        >
+          <option value="">未指派</option>
+          <option v-for="s in staff ?? []" :key="s.id" :value="s.id">
+            {{ s.icon }} {{ s.name }}（{{ s.specialty }}）
+          </option>
+        </select>
       </div>
 
       <p v-if="ownError" class="update-error" role="alert">

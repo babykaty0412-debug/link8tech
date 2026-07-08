@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Order, OrderSource } from '../types/order'
+import type { Staff } from '../types/schedule'
 import { SOURCE_LABELS } from '../constants/labels'
 import { formatCurrency, formatDateShort } from '../utils/format'
 import StatusBadge from './StatusBadge.vue'
@@ -7,6 +8,8 @@ import StatusBadge from './StatusBadge.vue'
 defineProps<{
   orders: Order[]
   selectedId: string | null
+  /** 師傅查表，用於顯示送餐人員名字 */
+  staffById?: Map<string, Staff>
 }>()
 
 const emit = defineEmits<{ select: [id: string] }>()
@@ -48,6 +51,9 @@ const initial = (name: string) => name.trim().charAt(0)
       <div class="row-foot">
         <span class="source-pill">
           {{ SOURCE_ICON[order.source] }} {{ SOURCE_LABELS[order.source] }}
+        </span>
+        <span v-if="order.courierId && staffById?.get(order.courierId)" class="courier-pill">
+          🛵 {{ staffById.get(order.courierId)!.name }}
         </span>
         <span class="amount">{{ formatCurrency(order.amount) }}</span>
         <span class="date">{{ formatDateShort(order.createdAt) }}</span>
@@ -147,6 +153,13 @@ const initial = (name: string) => name.trim().charAt(0)
   font-size: 12px;
   color: var(--text-secondary);
   background: var(--bg-subtle);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.courier-pill {
+  font-size: 12px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
   border-radius: 999px;
   padding: 3px 10px;
 }

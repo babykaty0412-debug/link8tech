@@ -9,6 +9,7 @@ vi.mock('../api/orderApi', () => ({
   createOrder: vi.fn(),
   fetchOrders: vi.fn(),
   updateOrderStatus: vi.fn(),
+  updateOrderCourier: vi.fn(),
   fetchStaff: vi.fn(),
   fetchShifts: vi.fn(),
   createShift: vi.fn(),

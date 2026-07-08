@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '../stores/orders'
+import { useScheduleStore } from '../stores/schedule'
 import { useNow, formatElapsed } from '../composables/useNow'
 import { SOURCE_LABELS } from '../constants/labels'
 
@@ -9,7 +10,14 @@ const store = useOrdersStore()
 const { orders, isLoading, loadError, updatingIds, updateError } =
   storeToRefs(store)
 
-onMounted(store.loadOrders)
+// 師傅查表：票卡顯示送餐人員
+const scheduleStore = useScheduleStore()
+const { staffById } = storeToRefs(scheduleStore)
+
+onMounted(() => {
+  store.loadOrders()
+  scheduleStore.loadAll()
+})
 
 const { now } = useNow()
 
@@ -79,6 +87,9 @@ function complete(id: string) {
 
         <p class="ticket-meta">
           {{ ticket.customerName }}｜{{ SOURCE_LABELS[ticket.source] }}
+          <template v-if="ticket.courierId && staffById.get(ticket.courierId)">
+            ｜🛵 {{ staffById.get(ticket.courierId)!.name }}
+          </template>
         </p>
 
         <ul class="ticket-items">

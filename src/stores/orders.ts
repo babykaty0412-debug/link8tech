@@ -1,6 +1,10 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { fetchOrders, updateOrderStatus } from '../api/orderApi'
+import {
+  fetchOrders,
+  updateOrderCourier,
+  updateOrderStatus,
+} from '../api/orderApi'
 import { useDebounce } from '../composables/useDebounce'
 import type {
   Order,
@@ -75,11 +79,13 @@ export const useOrdersStore = defineStore('orders', () => {
         )
         // 伺服器此次已回傳的訂單即為已確認，從未確認清單移除
         for (const id of fetchedIds) unconfirmedIds.delete(id)
-        // 更新中訂單維持樂觀狀態，不被舊資料蓋回
+        // 更新中訂單維持樂觀狀態（狀態與送餐人員），不被舊資料蓋回
         const merged = fetched.map((o) => {
           if (!updatingIds.value.has(o.id)) return o
           const local = orders.value.find((x) => x.id === o.id)
-          return local ? { ...o, status: local.status } : o
+          return local
+            ? { ...o, status: local.status, courierId: local.courierId }
+            : o
         })
         orders.value = [...localOnly, ...merged]
         hasLoaded.value = true
@@ -208,6 +214,39 @@ export const useOrdersStore = defineStore('orders', () => {
     }
   }
 
+  /**
+   * 指派送餐人員（null = 取消指派）。
+   * 與改狀態同一套紀律：樂觀更新、id 重查、防重入、只回滾自己的樂觀值。
+   */
+  async function assignCourier(id: string, courierId: string | null) {
+    const target = orders.value.find((o) => o.id === id)
+    if (!target || (target.courierId ?? null) === courierId) return
+    if (updatingIds.value.has(id)) return
+
+    const previous = target.courierId ?? null
+    target.courierId = courierId // 樂觀更新
+    updatingIds.value = new Set(updatingIds.value).add(id)
+    if (updateError.value?.orderId === id) updateError.value = null
+    try {
+      const updated = await updateOrderCourier(id, courierId)
+      const current = orders.value.find((o) => o.id === id)
+      if (current) current.courierId = updated.courierId ?? null
+    } catch (e) {
+      const current = orders.value.find((o) => o.id === id)
+      if (current && (current.courierId ?? null) === courierId) {
+        current.courierId = previous
+      }
+      updateError.value = {
+        orderId: id,
+        message: e instanceof Error ? e.message : '指派送餐人員失敗',
+      }
+    } finally {
+      const next = new Set(updatingIds.value)
+      next.delete(id)
+      updatingIds.value = next
+    }
+  }
+
   /** 清除更新錯誤（換頁時呼叫，避免錯誤橫幅跨頁殘留） */
   function clearUpdateError() {
     updateError.value = null
@@ -236,6 +275,7 @@ export const useOrdersStore = defineStore('orders', () => {
     selectOrder,
     appendOrder,
     changeOrderStatus,
+    assignCourier,
     clearUpdateError,
   }
 })

@@ -25,6 +25,7 @@ export const seedOrders: Order[] = [
       { name: '石鍋拌飯', qty: 2, price: 160 },
       { name: '柚子茶', qty: 2, price: 90 },
     ],
+    courierId: 'S03',
   },
   {
     id: 'A20260625003',

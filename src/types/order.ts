@@ -19,6 +19,8 @@ export interface Order {
   /** ISO 8601 字串，顯示時才轉 Date */
   createdAt: string
   items: OrderItem[]
+  /** 送餐人員（師傅 id），未指派為 null */
+  courierId?: string | null
 }
 
 /** 列表排序欄位與方向 */

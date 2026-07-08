@@ -39,6 +39,34 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
   // 只關閉自己這格的選單：await 期間使用者若已開啟別格，不去干擾
   if (openCell.value === myCell) openCell.value = null
 }
+
+// ---- 師傅管理面板 ----
+const ICONS = ['🧑‍🍳', '👩‍🍳', '👨‍🍳', '🧑‍🔧', '👩‍💼']
+
+const showManage = ref(false)
+/** 新增表單 */
+const newStaff = ref({ name: '', specialty: '', icon: ICONS[0] })
+/** 編輯中的師傅 id 與草稿 */
+const editingId = ref<string | null>(null)
+const editDraft = ref({ name: '', specialty: '', icon: ICONS[0] })
+
+async function submitNewStaff() {
+  const ok = await store.addStaff({ ...newStaff.value })
+  if (ok) newStaff.value = { name: '', specialty: '', icon: ICONS[0] }
+}
+
+function startEdit(id: string) {
+  const s = staffById.value.get(id)
+  if (!s) return
+  editingId.value = id
+  editDraft.value = { name: s.name, specialty: s.specialty, icon: s.icon }
+}
+
+async function saveEdit() {
+  if (!editingId.value) return
+  const ok = await store.editStaff(editingId.value, { ...editDraft.value })
+  if (ok) editingId.value = null
+}
 </script>
 
 <template>
@@ -50,13 +78,96 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
       </div>
     </header>
 
-    <!-- 師傅週負載概況 -->
+    <!-- 師傅週負載概況 + 管理入口 -->
     <div class="staff-summary">
       <span v-for="s in staff" :key="s.id" class="staff-chip">
         {{ s.icon }} {{ s.name }}
         <em class="staff-count">{{ weekCount.get(s.id) ?? 0 }} 班</em>
       </span>
+      <button type="button" class="manage-btn" @click="showManage = !showManage">
+        {{ showManage ? '完成' : '⚙️ 管理師傅' }}
+      </button>
     </div>
+
+    <!-- 師傅管理面板：新增／編輯／刪除 -->
+    <section v-if="showManage" class="manage-panel" aria-label="師傅管理">
+      <div v-for="s in staff" :key="s.id" class="manage-row">
+        <!-- 編輯模式 -->
+        <template v-if="editingId === s.id">
+          <div class="icon-pick">
+            <button
+              v-for="ic in ICONS"
+              :key="ic"
+              type="button"
+              class="icon-btn"
+              :class="{ 'icon-btn--on': editDraft.icon === ic }"
+              @click="editDraft.icon = ic"
+            >
+              {{ ic }}
+            </button>
+          </div>
+          <input v-model="editDraft.name" class="manage-input" placeholder="姓名" />
+          <input v-model="editDraft.specialty" class="manage-input" placeholder="專長" />
+          <button type="button" class="row-btn row-btn--save" :disabled="store.isSavingStaff" @click="saveEdit">
+            儲存
+          </button>
+          <button type="button" class="row-btn" @click="editingId = null">取消</button>
+        </template>
+
+        <!-- 一般模式 -->
+        <template v-else>
+          <span class="manage-name">{{ s.icon }} {{ s.name }}</span>
+          <span class="manage-spec">{{ s.specialty }}</span>
+          <span class="manage-count">{{ weekCount.get(s.id) ?? 0 }} 班</span>
+          <button type="button" class="row-btn" @click="startEdit(s.id)">✎ 編輯</button>
+          <button
+            type="button"
+            class="row-btn row-btn--danger"
+            :disabled="(weekCount.get(s.id) ?? 0) > 0"
+            :title="(weekCount.get(s.id) ?? 0) > 0 ? '仍有排班，請先移除其班別' : ''"
+            @click="store.removeStaff(s.id)"
+          >
+            🗑 刪除
+          </button>
+        </template>
+      </div>
+
+      <!-- 新增列 -->
+      <div class="manage-row manage-row--new">
+        <div class="icon-pick">
+          <button
+            v-for="ic in ICONS"
+            :key="ic"
+            type="button"
+            class="icon-btn"
+            :class="{ 'icon-btn--on': newStaff.icon === ic }"
+            @click="newStaff.icon = ic"
+          >
+            {{ ic }}
+          </button>
+        </div>
+        <input
+          v-model="newStaff.name"
+          class="manage-input"
+          placeholder="新師傅姓名"
+          @keydown.enter="submitNewStaff"
+        />
+        <input
+          v-model="newStaff.specialty"
+          class="manage-input"
+          placeholder="專長（如：鍋物）"
+          @keydown.enter="submitNewStaff"
+        />
+        <button
+          type="button"
+          class="row-btn row-btn--save"
+          :disabled="store.isSavingStaff || !newStaff.name.trim()"
+          @click="submitNewStaff"
+        >
+          {{ store.isSavingStaff ? '處理中…' : '＋ 新增' }}
+        </button>
+      </div>
+    </section>
 
     <p v-if="error && staff.length" class="error-note" role="alert">⚠️ {{ error }}</p>
 
@@ -176,6 +287,134 @@ async function pick(staffId: string, day: WeekDay, slot: ShiftSlot) {
   font-style: normal;
   font-weight: 700;
   color: var(--accent-text);
+}
+.manage-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.manage-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.manage-panel {
+  margin-top: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow-sm);
+  animation: panel-in 0.2s var(--ease) both;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+.manage-row:hover {
+  background: var(--bg-subtle);
+}
+.manage-row--new {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+.manage-name {
+  min-width: 140px;
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+.manage-spec {
+  min-width: 90px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.manage-count {
+  font-size: 13px;
+  color: var(--accent-text);
+  font-weight: 600;
+  margin-right: auto;
+}
+.row-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.row-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.row-btn--save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.row-btn--save:hover:not(:disabled) {
+  color: #fff;
+  filter: brightness(1.1);
+}
+.row-btn--danger:hover:not(:disabled) {
+  border-color: var(--status-cancelled-text);
+  color: var(--status-cancelled-text);
+}
+.row-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.manage-input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  min-width: 120px;
+  flex: 1;
+  max-width: 180px;
+}
+.icon-pick {
+  display: flex;
+  gap: 4px;
+}
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 17px;
+  cursor: pointer;
+}
+.icon-btn--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .error-note {
   margin: 14px 0 0;

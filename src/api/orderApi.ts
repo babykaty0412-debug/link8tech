@@ -55,6 +55,37 @@ export async function fetchStaff(): Promise<Staff[]> {
   return handle<Staff[]>(res)
 }
 
+/** 新增師傅 */
+export async function createStaff(
+  payload: Omit<Staff, 'id'>,
+): Promise<Staff> {
+  const res = await fetch(`${BASE_URL}/staff`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handle<Staff>(res)
+}
+
+/** 編輯師傅 */
+export async function updateStaff(
+  id: string,
+  patch: Partial<Omit<Staff, 'id'>>,
+): Promise<Staff> {
+  const res = await fetch(`${BASE_URL}/staff/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  return handle<Staff>(res)
+}
+
+/** 刪除師傅（仍有排班者後端會回 409） */
+export async function deleteStaff(id: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/staff/${id}`, { method: 'DELETE' })
+  await handle<{ ok: boolean }>(res)
+}
+
 /** 取得本週排班 */
 export async function fetchShifts(): Promise<Assignment[]> {
   const res = await fetch(`${BASE_URL}/shifts`)
@@ -77,6 +108,19 @@ export async function createShift(
 export async function deleteShift(id: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/shifts/${id}`, { method: 'DELETE' })
   await handle<{ ok: boolean }>(res)
+}
+
+/** 指派送餐人員（null = 取消指派），回傳更新後的訂單 */
+export async function updateOrderCourier(
+  id: string,
+  courierId: string | null,
+): Promise<Order> {
+  const res = await fetch(`${BASE_URL}/orders/${id}/courier`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ courierId }),
+  })
+  return handle<Order>(res)
 }
 
 /** 更新訂單狀態，回傳更新後的訂單 */

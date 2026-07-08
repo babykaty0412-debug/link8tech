@@ -2,6 +2,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '../stores/orders'
+import { useScheduleStore } from '../stores/schedule'
 import FilterBar from '../components/FilterBar.vue'
 import OrderList from '../components/OrderList.vue'
 import OrderDetail from '../components/OrderDetail.vue'
@@ -22,7 +23,14 @@ const {
   selectedOrder,
 } = storeToRefs(store)
 
-onMounted(store.loadOrders)
+// 送餐人員名單來自排班 store（同一份師傅資料，跨頁共享）
+const scheduleStore = useScheduleStore()
+const { staff, staffById } = storeToRefs(scheduleStore)
+
+onMounted(() => {
+  store.loadOrders()
+  scheduleStore.loadAll()
+})
 
 // 手機版選取後自動捲動至明細
 const detailPane = ref<HTMLElement | null>(null)
@@ -75,6 +83,7 @@ watch(selectedOrderId, async (id) => {
           <OrderList
             :orders="filteredOrders"
             :selected-id="selectedOrderId"
+            :staff-by-id="staffById"
             @select="store.selectOrder"
           />
         </template>
@@ -85,7 +94,9 @@ watch(selectedOrderId, async (id) => {
           :order="selectedOrder"
           :updating="!!selectedOrder && updatingIds.has(selectedOrder.id)"
           :update-error="updateError"
+          :staff="staff"
           @change-status="store.changeOrderStatus"
+          @change-courier="store.assignCourier"
         />
       </div>
     </div>

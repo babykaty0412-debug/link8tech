@@ -3,9 +3,12 @@ import { defineStore } from 'pinia'
 import {
   ApiError,
   createShift,
+  createStaff,
   deleteShift,
+  deleteStaff,
   fetchShifts,
   fetchStaff,
+  updateStaff,
 } from '../api/orderApi'
 import type { Assignment, ShiftSlot, Staff, WeekDay } from '../types/schedule'
 
@@ -115,6 +118,73 @@ export const useScheduleStore = defineStore('schedule', () => {
     return assigningKeys.value.has(`${staffId}-${day}-${slot}`)
   }
 
+  // ---- 師傅管理 CRUD ----
+  const isSavingStaff = ref(false)
+
+  /** 新增師傅（伺服器配發 id 後加入名單） */
+  async function addStaff(payload: Omit<Staff, 'id'>) {
+    if (!payload.name.trim()) {
+      error.value = '師傅姓名不可空白'
+      return false
+    }
+    isSavingStaff.value = true
+    error.value = null
+    try {
+      const created = await createStaff(payload)
+      staff.value.push(created)
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '新增師傅失敗'
+      return false
+    } finally {
+      isSavingStaff.value = false
+    }
+  }
+
+  /** 編輯師傅：以伺服器回應為準更新名單 */
+  async function editStaff(id: string, patch: Partial<Omit<Staff, 'id'>>) {
+    isSavingStaff.value = true
+    error.value = null
+    try {
+      const updated = await updateStaff(id, patch)
+      const idx = staff.value.findIndex((s) => s.id === id)
+      if (idx !== -1) staff.value[idx] = updated
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '編輯師傅失敗'
+      return false
+    } finally {
+      isSavingStaff.value = false
+    }
+  }
+
+  /**
+   * 刪除師傅。前端先檢查是否仍有排班（後端也會再擋 409，雙層防護）——
+   * 排班表不能出現查不到的人，這是資料完整性的守衛。
+   */
+  async function removeStaff(id: string) {
+    error.value = null
+    if ((weekCount.value.get(id) ?? 0) > 0) {
+      error.value = '該師傅仍有排班，請先移除其所有班別再刪除'
+      return false
+    }
+    const target = staff.value.find((s) => s.id === id)
+    if (!target) return false
+    staff.value = staff.value.filter((s) => s.id !== id) // 樂觀移除
+    try {
+      await deleteStaff(id)
+      return true
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return true // 已不存在
+      // 回滾以「重新加回」處理，不用舊索引
+      if (!staff.value.some((s) => s.id === id)) {
+        staff.value = [...staff.value, target]
+      }
+      error.value = e instanceof Error ? e.message : '刪除師傅失敗'
+      return false
+    }
+  }
+
   /** 移除班別：樂觀移除，失敗還原（404 例外——資料本就不存在，等同刪除成功） */
   async function remove(id: string) {
     const target = assignments.value.find((a) => a.id === id)
@@ -140,6 +210,10 @@ export const useScheduleStore = defineStore('schedule', () => {
     isLoading,
     error,
     isAssigning,
+    isSavingStaff,
+    addStaff,
+    editStaff,
+    removeStaff,
     staffById,
     weekCount,
     loadAll,

@@ -8,6 +8,9 @@ vi.mock('../api/orderApi', () => ({
   fetchShifts: vi.fn(),
   createShift: vi.fn(),
   deleteShift: vi.fn(),
+  createStaff: vi.fn(),
+  updateStaff: vi.fn(),
+  deleteStaff: vi.fn(),
   fetchMenu: vi.fn(),
   createOrder: vi.fn(),
   fetchOrders: vi.fn(),
@@ -24,7 +27,9 @@ vi.mock('../api/orderApi', () => ({
 
 import {
   createShift,
+  createStaff,
   deleteShift,
+  deleteStaff,
   fetchShifts,
   fetchStaff,
 } from '../api/orderApi'
@@ -112,5 +117,38 @@ describe('useScheduleStore', () => {
     resolveCreate()
     await first
     expect(store.isAssigning('S02', 1, 'morning')).toBe(false)
+  })
+
+  it('addStaff 成功後加入名單', async () => {
+    vi.mocked(createStaff).mockResolvedValue({
+      id: 'S99',
+      name: '新來師傅',
+      specialty: '甜點',
+      icon: '👩‍🍳',
+    })
+    const store = useScheduleStore()
+    await store.loadAll()
+    const ok = await store.addStaff({ name: '新來師傅', specialty: '甜點', icon: '👩‍🍳' })
+    expect(ok).toBe(true)
+    expect(store.staff).toHaveLength(3)
+  })
+
+  it('removeStaff：仍有排班的師傅前端直接擋下，不打 API', async () => {
+    const store = useScheduleStore()
+    await store.loadAll() // S01 有 AS01 班別
+    const ok = await store.removeStaff('S01')
+    expect(ok).toBe(false)
+    expect(store.error).toContain('請先移除')
+    expect(deleteStaff).not.toHaveBeenCalled()
+    expect(store.staff).toHaveLength(2) // 名單不變
+  })
+
+  it('removeStaff：無排班的師傅可刪除', async () => {
+    vi.mocked(deleteStaff).mockResolvedValue()
+    const store = useScheduleStore()
+    await store.loadAll() // S02 沒有班別
+    const ok = await store.removeStaff('S02')
+    expect(ok).toBe(true)
+    expect(store.staff.some((s) => s.id === 'S02')).toBe(false)
   })
 })

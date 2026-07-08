@@ -9,9 +9,14 @@ import type { Order } from '../types/order'
 vi.mock('../api/orderApi', () => ({
   fetchOrders: vi.fn(),
   updateOrderStatus: vi.fn(),
+  updateOrderCourier: vi.fn(),
 }))
 
-import { fetchOrders, updateOrderStatus } from '../api/orderApi'
+import {
+  fetchOrders,
+  updateOrderCourier,
+  updateOrderStatus,
+} from '../api/orderApi'
 
 const clone = () => structuredClone(seedOrders) as Order[]
 
@@ -153,6 +158,29 @@ describe('useOrdersStore', () => {
     const store = useOrdersStore()
     await Promise.all([store.loadOrders(), store.loadOrders(), store.loadOrders()])
     expect(fetchOrders).toHaveBeenCalledTimes(1)
+  })
+
+  it('assignCourier 樂觀指派成功，以伺服器回應為準', async () => {
+    vi.mocked(updateOrderCourier).mockResolvedValue({
+      id: 'A20260625001',
+      courierId: 'S02',
+    } as Order)
+    const store = useOrdersStore()
+    await store.loadOrders()
+    await store.assignCourier('A20260625001', 'S02')
+    const target = store.orders.find((o) => o.id === 'A20260625001')
+    expect(target?.courierId).toBe('S02')
+    expect(store.updateError).toBeNull()
+  })
+
+  it('assignCourier 失敗時回滾並記錄綁定訂單的錯誤', async () => {
+    vi.mocked(updateOrderCourier).mockRejectedValue(new Error('找不到該送餐人員'))
+    const store = useOrdersStore()
+    await store.loadOrders()
+    await store.assignCourier('A20260625001', 'S99')
+    const target = store.orders.find((o) => o.id === 'A20260625001')
+    expect(target?.courierId ?? null).toBeNull() // 回滾
+    expect(store.updateError?.orderId).toBe('A20260625001')
   })
 
   it('loadOrders 合併：本地剛新增的訂單不被較舊的伺服器快照吃掉', async () => {
