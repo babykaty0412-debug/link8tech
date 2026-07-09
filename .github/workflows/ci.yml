@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取出程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安裝依賴
+        run: npm ci
+
+      - name: 單元測試（Vitest）
+        run: npm test
+
+      - name: 型別檢查 + 建置
+        run: npm run build
