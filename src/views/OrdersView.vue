@@ -3,6 +3,7 @@ import { nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '../stores/orders'
 import { useScheduleStore } from '../stores/schedule'
+import { useOrdersQuerySync } from '../composables/useOrdersQuerySync'
 import FilterBar from '../components/FilterBar.vue'
 import OrderList from '../components/OrderList.vue'
 import OrderDetail from '../components/OrderDetail.vue'
@@ -26,6 +27,9 @@ const {
 // 送餐人員名單來自排班 store（同一份師傅資料，跨頁共享）
 const scheduleStore = useScheduleStore()
 const { staff, staffById } = storeToRefs(scheduleStore)
+
+// 篩選條件 ↔ URL query 同步（重新整理/分享網址不掉條件）
+useOrdersQuerySync()
 
 onMounted(() => {
   store.loadOrders()
