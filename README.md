@@ -4,7 +4,7 @@
 
 以 **Vue 3 + TypeScript + Vite** 打造的雲端點餐／餐飲營運系統作品：從顧客點餐、後台訂單、廚房出單到師傅排班的完整流程，並以「訂單永不遺失」為核心設計了離線佇列。
 
-> 🔗 線上展示：_(部署後補上連結)_
+> 🔗 線上展示：**https://link8tech.vercel.app**
 > 📦 原始碼：https://github.com/babykaty0412-debug/link8tech
 
 ---
