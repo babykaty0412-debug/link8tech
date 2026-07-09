@@ -8,6 +8,9 @@ on:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    env:
+      # 產品面向台灣市場，日期測試以台灣時區斷言；CI 機器預設 UTC 會差 8 小時
+      TZ: Asia/Taipei
     steps:
       - name: 取出程式碼
         uses: actions/checkout@v4
